@@ -8,6 +8,12 @@
 [![Known Vulnerabilities](https://snyk.io//test/github/IsmaelMartinez/teams-for-linux/badge.svg?targetFile=package.json)](https://snyk.io//test/github/IsmaelMartinez/teams-for-linux?targetFile=package.json)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=IsmaelMartinez_teams-for-linux&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=IsmaelMartinez_teams-for-linux)
 
+> [!NOTE]  
+> This is a fork of [Teams for Linux](https://github.com/IsmaelMartinez/teams-for-linux/)
+with patch to work around the limitations of electron apps related to FIDO authentication: https://github.com/electron/electron/issues/24573
+
+---
+
 **Unofficial Microsoft Teams client for Linux** — a native desktop app that wraps the Teams web version with enhanced Linux integration.
 
 ✅ **System notifications**  
@@ -27,6 +33,11 @@
 _This sponsorship helps support the ongoing development of teams-for-linux._
 
 ## Installation
+
+> [!NOTE]  
+> For installation instructions specific to this fork, see [INSTALL.md](INSTALL.md)
+
+---
 
 ### Package Repositories
 
