@@ -55,11 +55,14 @@
   },
   "dependencies": {
     "@homebridge/dbus-native": "0.7.4",
+    "chrome-remote-interface": "^0.33.3",
     "electron-log": "^5.4.3",
     "electron-store": "11.0.2",
     "electron-updater": "^6.8.3",
     "electron-window-state": "5.0.3",
+    "get-port": "^7.1.0",
     "mqtt": "^5.15.1",
+    "tmp": "^0.2.5",
     "yargs": "^18.0.0"
   },
   "devDependencies": {
