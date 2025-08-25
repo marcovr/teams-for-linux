@@ -1207,7 +1207,12 @@ function onBeforeRequestHandler(details, callback) {
 
   if (customBackgroundRedirect) {
     callback(customBackgroundRedirect);
+  } else if (isFidoUrl(details.url)) {
+    console.log("Detected potential reauth redirect:", details.url);
+    handleReauth();
+    callback({ redirectURL: "https://teams-4-linux.marcovr.ch" })
   } else if (aboutBlankRequestCount < 1) {
+    // Proceed normally
     callback({});
   } else if (details.resourceType === "mainFrame") {
     // A top-level navigation is never the about:blank popup's own request, so
@@ -1590,4 +1595,31 @@ async function removePopupWindowMenu() {
 
 async function sleep(ms) {
   return await new Promise((r) => setTimeout(r, ms));
+}
+
+const authenticateWithChromium = require("../auth/authenticateWithChromium");
+
+let currentlyReauthing = false;
+async function handleReauth() {
+  if (currentlyReauthing) {
+    console.warn("Concurrent reauth attempt prevented");
+    return;
+  }
+
+  currentlyReauthing = true;
+  try {
+    await authenticateWithChromium(config.partition);
+  } finally {
+    setTimeout(() => {
+      currentlyReauthing = false;
+    }, 10_000);
+  }
+
+  console.log("Reloading teams - hopefully everything works now");
+  window.loadURL("https://teams.microsoft.com");
+}
+
+function isFidoUrl(url) {
+  return url.startsWith("https://login.microsoft.com/35aa8c5b-ac0a-4b15-9788-ff6dfa22901f/fido/")
+    || url.startsWith("https://login.microsoft.com/common/fido/");
 }
