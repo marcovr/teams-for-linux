@@ -32,6 +32,10 @@ questions. That's probably the quickest way to find solutions.
 [![Known Vulnerabilities](https://snyk.io//test/github/IsmaelMartinez/teams-for-linux/badge.svg?targetFile=package.json)](https://snyk.io//test/github/IsmaelMartinez/teams-for-linux?targetFile=package.json)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=IsmaelMartinez_teams-for-linux&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=IsmaelMartinez_teams-for-linux)
 
+> [!NOTE]  
+> This is a fork of [Teams for Linux](https://github.com/IsmaelMartinez/teams-for-linux/)
+with patch to work around the limitations of electron apps related to FIDO authentication: https://github.com/electron/electron/issues/24573
+
 Unofficial Microsoft Teams client for Linux using
 [`Electron`](https://electronjs.org/). It uses the Web App and wraps it as a
 standalone application using Electron.
