@@ -2,8 +2,10 @@
 
 ## Prerequisites
 
-Please make sure you either have chromium in your PATH env or you changed [this line](https://github.com/marcovr/teams-for-linux/blob/main/app/auth/launchChromium.js#L21C23-L21C31)
-to a chromium based browser that you have.
+You need a **chromium based browser** installed. If you have either `chromium`, `chrome` or `brave` in your PATH, it will work.
+[See here](https://github.com/marcovr/teams-for-linux/blob/main/app/auth/launchChromium.js#L33).
+
+Otherwise, you can set the environment variable `T4L_CHROMIUM_BINARY` to a suitbale binary name / file path.
 
 ## Testing
 
