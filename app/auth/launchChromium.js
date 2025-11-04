@@ -50,7 +50,7 @@ async function getSuitableBinary() {
     }
   }
 
-  throw new Error("No suitable chromium binary found! Consider setting '${envVariableName}'");
+  throw new Error(`No suitable chromium binary found! Consider setting '${envVariableName}'`);
 }
 
 async function which(binaryName) {
