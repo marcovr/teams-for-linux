@@ -2,7 +2,8 @@
 
 ## Prerequisites
 
-You need a **chromium based browser** installed. If you have either `chromium`, `chrome` or `brave` in your PATH, it will work.
+You need a **chromium based browser** installed.
+If you have either `chromium`, `chrome` or `brave` in your PATH, it will work.
 [See here](https://github.com/marcovr/teams-for-linux/blob/main/app/auth/launchChromium.js#L33).
 
 Otherwise, you can set the environment variable `T4L_CHROMIUM_BINARY` to a suitbale binary name / file path.
@@ -64,3 +65,10 @@ Terminal=false
 StartupWMClass=teams-for-linux
 StartupNotify=true
 ```
+
+If you need to use the `T4L_CHROMIUM_BINARY` environment variable you can set it directly in the desktop Exec command:
+
+```ini
+Exec=env T4L_CHROMIUM_BINARY=chromium-browser /usr/bin/teams-for-linux
+```
+
