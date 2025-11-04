@@ -69,6 +69,6 @@ StartupNotify=true
 If you need to use the `T4L_CHROMIUM_BINARY` environment variable you can set it directly in the desktop Exec command:
 
 ```ini
-Exec=env T4L_CHROMIUM_BINARY=chromium-browser T/usr/bin/teams-for-linux
+Exec=env T4L_CHROMIUM_BINARY=chromium-browser /usr/bin/teams-for-linux
 ```
 
