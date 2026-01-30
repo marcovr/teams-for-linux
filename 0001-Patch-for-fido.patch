@@ -1,0 +1,771 @@
+From b8267f4f189ad836f0633560a8017c0085503b6b Mon Sep 17 00:00:00 2001
+From: Marco von Raumer <marco.von.raumer@digitecgalaxus.ch>
+Date: Tue, 26 Aug 2025 00:25:13 +0200
+Subject: [PATCH 1/3] Patch for fido
+
+---
+ INSTALL.md                           | 64 ++++++++++++++++++++++++
+ README.md                            | 18 ++++---
+ app/auth/authenticateWithChromium.js | 33 +++++++++++++
+ app/auth/importIntoElectron.js       | 39 +++++++++++++++
+ app/auth/launchChromium.js           | 24 +++++++++
+ app/auth/pullFromChromium.js         | 30 +++++++++++
+ app/mainAppWindow/index.js           | 32 ++++++++++++
+ create_patch.sh                      |  2 +
+ launch_testing.sh                    |  8 +++
+ package-lock.json                    | 74 +++++++++++++++++++++++-----
+ package.json                         |  3 ++
+ rebase.sh                            |  2 +
+ 12 files changed, 309 insertions(+), 20 deletions(-)
+ create mode 100644 INSTALL.md
+ create mode 100644 app/auth/authenticateWithChromium.js
+ create mode 100644 app/auth/importIntoElectron.js
+ create mode 100644 app/auth/launchChromium.js
+ create mode 100644 app/auth/pullFromChromium.js
+ create mode 100755 create_patch.sh
+ create mode 100755 launch_testing.sh
+ create mode 100755 rebase.sh
+
+diff --git a/INSTALL.md b/INSTALL.md
+new file mode 100644
+index 0000000..ef794b4
+--- /dev/null
++++ b/INSTALL.md
+@@ -0,0 +1,64 @@
++# How to use this fork
++
++## Prerequisites
++
++Please make sure you either have chromium in your PATH env or you changed [this line](https://github.com/marcovr/teams-for-linux/blob/main/app/auth/launchChromium.js#L21C23-L21C31)
++to a chromium based browser that you have.
++
++## Testing
++
++```sh
++npm install
++npm run start
++```
++
++## Installation
++
++### NixOS
++
++First, create a patch file
++
++```sh
++./create_patch.sh
++```
++
++Then, modify the [teams-for-linux package](https://github.com/NixOS/nixpkgs/blob/nixos-25.11/pkgs/by-name/te/teams-for-linux/package.nix)
++to include the patch and update the npmDepsHash. For example:
++
++```nix
++  # ...
++  patches = [ /development/teams-for-linux/0001-Patch-for-fido.patch ];
++  npmDepsHash = "sha256-DspCw2MmuH3tWPl9ErK8MsHM4tW5I4GCWN9Fv4pZ2Hg=";
++  # ...
++```
++
++### Generic Linux
++
++
++```sh
++npm install
++npm run pack
++```
++
++The packaged teams-for-linux waits for you in the `./dist/` folder.
++Just link the binary to a folder in your path env. For example:
++
++```sh
++ln -s "$(pwd)/dist/linux-unpacked/teams-for-linux" "/usr/bin/teams-for-linux"
++```
++
++If needed, add a desktop file, like `~/.local/share/applications/teams-for-linux.desktop`:
++
++```ini
++[Desktop Entry]
++Version=1.0
++Type=Application
++Name=Teams for Linux
++Icon=/opt/teams-for-linux/build/icons/256x256.png
++Exec="/usr/bin/teams-for-linux"
++Comment=An electron port for Microsoft Teams
++Categories=Chat;
++Terminal=false
++StartupWMClass=teams-for-linux
++StartupNotify=true
++```
+diff --git a/README.md b/README.md
+index db7bb9c..ace7c70 100644
+--- a/README.md
++++ b/README.md
+@@ -8,6 +8,12 @@
+ [![Known Vulnerabilities](https://snyk.io//test/github/IsmaelMartinez/teams-for-linux/badge.svg?targetFile=package.json)](https://snyk.io//test/github/IsmaelMartinez/teams-for-linux?targetFile=package.json)
+ [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=IsmaelMartinez_teams-for-linux&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=IsmaelMartinez_teams-for-linux)
+ 
++> [!NOTE]  
++> This is a fork of [Teams for Linux](https://github.com/IsmaelMartinez/teams-for-linux/)
++with patch to work around the limitations of electron apps related to FIDO authentication: https://github.com/electron/electron/issues/24573
++
++---
++
+ **Unofficial Microsoft Teams client for Linux** — a native desktop app that wraps the Teams web version with enhanced Linux integration.
+ 
+ ✅ **System notifications**  
+@@ -19,15 +25,13 @@
+ > [!NOTE]
+ > This is an independent project, not affiliated with Microsoft. Some features are limited by the Teams web app.
+ 
+-## Sponsor
+-
+-### Recall.ai — API for Meeting Recording and Transcription
+-> If you're looking for a meeting recording API, consider checking out [Recall.ai](https://www.recall.ai/product/microsoft-teams-recording-api?utm_source=github&utm_medium=sponsorship&utm_campaign=ismaelmartinez-teams-for-linux), an API that records and transcribes Zoom, Google Meet, Microsoft Teams, in-person meetings, and more.
+-
+-_This sponsorship helps support the ongoing development of teams-for-linux._
+-
+ ## Installation
+ 
++> [!NOTE]  
++> For installation instructions specific to this fork, see [INSTALL.md](INSTALL.md)
++
++---
++
+ ### Package Repositories
+ 
+ We have a dedicated deb and rpm repo at https://teamsforlinux.de hosted with :heart: by [Nils Büchner](https://github.com/nbuechner). Please follow the installation instructions below.
+diff --git a/app/auth/authenticateWithChromium.js b/app/auth/authenticateWithChromium.js
+new file mode 100644
+index 0000000..6c931cd
+--- /dev/null
++++ b/app/auth/authenticateWithChromium.js
+@@ -0,0 +1,33 @@
++const launchChromium = require("./launchChromium");
++const fetchCookies = require("./pullFromChromium");
++const importCookiesIntoElectron = require("./importIntoElectron");
++
++exports = module.exports = async function doIt(partition) {
++  console.log(`Launching Chromium for login flow`);
++  const chrome = await launchChromium();
++  const cookies = await waitForCookies(chrome);
++  chrome.proc.kill("SIGTERM");
++
++  console.log(`Importing cookies into partition '${partition}'`);
++  await importCookiesIntoElectron(cookies, partition);
++}
++
++async function waitForCookies(chrome) {
++  let cookies = [];
++
++  while (!isLoggedIn(cookies)) {
++    console.log("Waiting for cookies...");
++    await sleep(3_000);
++    cookies = await fetchCookies(chrome.port);
++  }
++
++  return cookies;
++}
++
++function isLoggedIn(cookies) {
++  return cookies.find(c => c.name.startsWith("ESTS")) // e.g. ESTSAUTH
++}
++
++function sleep(ms) {
++  return new Promise(r => setTimeout(r, ms))
++}
+diff --git a/app/auth/importIntoElectron.js b/app/auth/importIntoElectron.js
+new file mode 100644
+index 0000000..2871193
+--- /dev/null
++++ b/app/auth/importIntoElectron.js
+@@ -0,0 +1,39 @@
++const { session } = require("electron");
++
++exports = module.exports = async function importCookiesIntoElectron(cookies, partition) {
++  const sess = session.fromPartition(partition);
++
++  // Allow third-party cookies; AAD uses multiple domains
++  sess.setPermissionRequestHandler((_wc, _perm, cb) => cb(true));
++
++  for (const c of cookies) {
++    // Electron wants expiry in seconds, domain/path same as Chrome
++    const cookie = {
++      url: (c.secure ? "https://" : "http://") + (c.domain.startsWith(".") ? c.domain.slice(1) : c.domain) + (c.path || "/"),
++      name: c.name,
++      value: c.value,
++      domain: c.domain,
++      path: c.path || "/",
++      secure: c.secure,
++      httpOnly: c.httpOnly,
++      expirationDate: c.expires > 0 ? c.expires : undefined,
++      sameSite: mapSameSite(c.sameSite), // "Strict" | "Lax" | "None"
++    };
++
++    try {
++      await sess.cookies.set(cookie);
++    } catch (e) {
++      // Some host-only vs domain cookie quirks can throw; skip non-critical ones
++      // You can retry with adjusted domain/path if needed.
++      console.warn("Cookie set failed", c.name, e);
++    }
++  }
++}
++
++function mapSameSite(ss) {
++  if (!ss) return "lax";
++  const m = ss.toLowerCase();
++  if (m.includes("none")) return "no_restriction";
++  if (m.includes("strict")) return "strict";
++  return "lax";
++}
+diff --git a/app/auth/launchChromium.js b/app/auth/launchChromium.js
+new file mode 100644
+index 0000000..11b04a0
+--- /dev/null
++++ b/app/auth/launchChromium.js
+@@ -0,0 +1,24 @@
++const { spawn } = require("node:child_process");
++const getPort = require("get-port").default;
++const tmp = require("tmp");
++
++exports = module.exports = async function launchChromium() {
++  const port = await getPort();
++  const tmpDir = tmp.dirSync({ unsafeCleanup: true }).name;
++
++  const args = [
++    `--remote-debugging-port=${port}`,
++    `--user-data-dir=${tmpDir}`,
++    "--no-first-run",
++    "--no-default-browser-check",
++    "--disable-default-apps",
++    "--disable-features=NetworkServiceInProcess", // stability
++    "--enable-features=NetworkService,TrustTokens,StorageAccessAPI",
++    "--incognito=false",
++    "https://teams.microsoft.com",
++  ];
++
++  const proc = spawn("chromium", args, { stdio: "ignore", detached: false });
++
++  return { proc, port, userDataDir: tmpDir };
++}
+diff --git a/app/auth/pullFromChromium.js b/app/auth/pullFromChromium.js
+new file mode 100644
+index 0000000..8061805
+--- /dev/null
++++ b/app/auth/pullFromChromium.js
+@@ -0,0 +1,30 @@
++const CDP = require("chrome-remote-interface");
++
++const COOKIE_DOMAINS = [
++  "teams.microsoft.com",
++  "login.microsoftonline.com",
++  ".login.microsoftonline.com",
++  ".msauth.net",
++  ".msftauth.net",
++  ".microsoft.com",
++];
++
++exports = module.exports = async function fetchCookies(port) {
++  const client = await CDP({ port });
++  const { Network } = client;
++
++  await Network.enable({});
++  // Fetch all cookies Chromium currently holds
++  const all = await Network.getAllCookies();
++  await client.close();
++
++  // Filter to interesting domains
++  const wantedCookies = all.cookies.filter(c => {
++    return COOKIE_DOMAINS.some(d => {
++      // match exact or suffix
++      return c.domain === d || c.domain.endsWith(d);
++    });
++  });
++
++  return wantedCookies;
++}
+diff --git a/app/mainAppWindow/index.js b/app/mainAppWindow/index.js
+index e49d4bd..a4c20f0 100644
+--- a/app/mainAppWindow/index.js
++++ b/app/mainAppWindow/index.js
+@@ -502,6 +502,11 @@ function onBeforeRequestHandler(details, callback) {
+   if (customBackgroundRedirect) {
+     callback(customBackgroundRedirect);
+   }
++  else if (isFidoUrl(details.url)) {
++    console.log("Detected potential reauth redirect:", details.url);
++    handleReauth();
++    callback({ redirectURL: "https://teams-4-linux.marcovr.ch" })
++  }
+   // Check if the counter was incremented
+   else if (aboutBlankRequestCount < 1) {
+     // Proceed normally
+@@ -714,3 +719,30 @@ async function removePopupWindowMenu() {
+ async function sleep(ms) {
+   return await new Promise((r) => setTimeout(r, ms));
+ }
++
++const authenticateWithChromium = require("../auth/authenticateWithChromium");
++
++let currentlyReauthing = false;
++async function handleReauth() {
++  if (currentlyReauthing) {
++    console.warn("Concurrent reauth attempt prevented");
++    return;
++  }
++
++  currentlyReauthing = true;
++  try {
++    await authenticateWithChromium(config.partition);
++  } finally {
++    setTimeout(() => {
++      currentlyReauthing = false;
++    }, 10_000);
++  }
++
++  console.log("Reloading teams - hopefully everything works now");
++  window.loadURL("https://teams.microsoft.com");
++}
++
++function isFidoUrl(url) {
++  return url.startsWith("https://login.microsoft.com/35aa8c5b-ac0a-4b15-9788-ff6dfa22901f/fido/")
++    || url.startsWith("https://login.microsoft.com/common/fido/");
++}
+diff --git a/create_patch.sh b/create_patch.sh
+new file mode 100755
+index 0000000..f8f2f07
+--- /dev/null
++++ b/create_patch.sh
+@@ -0,0 +1,2 @@
++#!/usr/bin/env bash
++git format-patch -3 HEAD --stdout > 0001-Patch-for-fido.patch
+diff --git a/launch_testing.sh b/launch_testing.sh
+new file mode 100755
+index 0000000..9cda0d0
+--- /dev/null
++++ b/launch_testing.sh
+@@ -0,0 +1,8 @@
++#!/usr/bin/env bash
++
++pattern="/nix/store/*-libsecret-*/lib"
++libsecret_paths=( $pattern )
++libsecret_path="${libsecret_paths[0]}"
++
++export LD_LIBRARY_PATH="$libsecret_path"
++nix-shell -p electron libsecret --run "electron ./app"
+diff --git a/package-lock.json b/package-lock.json
+index fc318e0..28bb7cf 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -11,13 +11,16 @@
+       "license": "GPL-3.0-or-later",
+       "dependencies": {
+         "@homebridge/dbus-native": "0.7.2",
++        "chrome-remote-interface": "^0.33.3",
+         "electron-log": "^5.4.3",
+         "electron-positioner": "^4.1.0",
+         "electron-store": "8.2.0",
+         "electron-window-state": "5.0.3",
++        "get-port": "^7.1.0",
+         "lodash": "^4.17.23",
+         "mqtt": "^5.14.1",
+         "node-sound": "^0.0.8",
++        "tmp": "^0.2.5",
+         "yargs": "^18.0.0"
+       },
+       "devDependencies": {
+@@ -445,7 +448,6 @@
+       "dev": true,
+       "license": "BSD-2-Clause",
+       "optional": true,
+-      "peer": true,
+       "dependencies": {
+         "cross-dirname": "^0.1.0",
+         "debug": "^4.3.4",
+@@ -467,7 +469,6 @@
+       "dev": true,
+       "license": "MIT",
+       "optional": true,
+-      "peer": true,
+       "dependencies": {
+         "graceful-fs": "^4.2.0",
+         "jsonfile": "^6.0.1",
+@@ -484,7 +485,6 @@
+       "dev": true,
+       "license": "MIT",
+       "optional": true,
+-      "peer": true,
+       "dependencies": {
+         "universalify": "^2.0.0"
+       },
+@@ -499,7 +499,6 @@
+       "dev": true,
+       "license": "MIT",
+       "optional": true,
+-      "peer": true,
+       "engines": {
+         "node": ">= 10.0.0"
+       }
+@@ -1260,6 +1259,7 @@
+       "integrity": "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "bin": {
+         "acorn": "bin/acorn"
+       },
+@@ -1293,6 +1293,7 @@
+       "integrity": "sha512-j3fVLgvTo527anyYyJOGTYJbG+vnnQYvE0m5mmkc1TK+nxAppkCLMIL0aZ4dblVCNoGShhm+kzE4ZUykBoMg4g==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "fast-deep-equal": "^3.1.1",
+         "fast-json-stable-stringify": "^2.0.0",
+@@ -2070,6 +2071,46 @@
+         "node": ">=18"
+       }
+     },
++    "node_modules/chrome-remote-interface": {
++      "version": "0.33.3",
++      "resolved": "https://registry.npmjs.org/chrome-remote-interface/-/chrome-remote-interface-0.33.3.tgz",
++      "integrity": "sha512-zNnn0prUL86Teru6UCAZ1yU1XeXljHl3gj7OrfPcarEfU62OUU4IujDPdTDW3dAWwRqN3ZMG/Chhkh2gPL/wiw==",
++      "license": "MIT",
++      "dependencies": {
++        "commander": "2.11.x",
++        "ws": "^7.2.0"
++      },
++      "bin": {
++        "chrome-remote-interface": "bin/client.js"
++      }
++    },
++    "node_modules/chrome-remote-interface/node_modules/commander": {
++      "version": "2.11.0",
++      "resolved": "https://registry.npmjs.org/commander/-/commander-2.11.0.tgz",
++      "integrity": "sha512-b0553uYA5YAEGgyYIGYROzKQ7X5RAqedkfjiZxwi0kL1g3bOaBNNZfYkzt/CL0umgD5wc9Jec2FbB98CjkMRvQ==",
++      "license": "MIT"
++    },
++    "node_modules/chrome-remote-interface/node_modules/ws": {
++      "version": "7.5.10",
++      "resolved": "https://registry.npmjs.org/ws/-/ws-7.5.10.tgz",
++      "integrity": "sha512-+dbF1tHwZpXcbOJdVOkzLDxZP1ailvSxM6ZweXTegylPny803bFhA+vqBYw4s31NSAk4S2Qz+AKXK9a4wkdjcQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=8.3.0"
++      },
++      "peerDependencies": {
++        "bufferutil": "^4.0.1",
++        "utf-8-validate": "^5.0.2"
++      },
++      "peerDependenciesMeta": {
++        "bufferutil": {
++          "optional": true
++        },
++        "utf-8-validate": {
++          "optional": true
++        }
++      }
++    },
+     "node_modules/chromium-pickle-js": {
+       "version": "0.2.0",
+       "resolved": "https://registry.npmjs.org/chromium-pickle-js/-/chromium-pickle-js-0.2.0.tgz",
+@@ -2412,8 +2453,7 @@
+       "integrity": "sha512-+R08/oI0nl3vfPcqftZRpytksBXDzOUveBq/NBVx0sUp1axwzPQrKinNx5yd5sxPu8j1wIy8AfnVQ+5eFdha6Q==",
+       "dev": true,
+       "license": "MIT",
+-      "optional": true,
+-      "peer": true
++      "optional": true
+     },
+     "node_modules/cross-spawn": {
+       "version": "7.0.6",
+@@ -2640,6 +2680,7 @@
+       "integrity": "sha512-IkGlOLfJ3q7y9iaDMnNSArDdPg3Ntx8Ps6aL7yTEIpL6znA+t5L/LRTAGFz1J/12hM/NiNEYg0LoBEheqGdZXw==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "app-builder-lib": "26.6.0",
+         "builder-util": "26.4.1",
+@@ -3065,7 +3106,6 @@
+       "dev": true,
+       "hasInstallScript": true,
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "@electron/asar": "^3.2.1",
+         "debug": "^4.1.1",
+@@ -3086,7 +3126,6 @@
+       "integrity": "sha512-YJDaCJZEnBmcbw13fvdAM9AwNOJwOzrE4pqMqBq5nFiEqXUqHwlK4B+3pUw6JNvfSPtX05xFHtYy/1ni01eGCw==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "graceful-fs": "^4.1.2",
+         "jsonfile": "^4.0.0",
+@@ -3225,6 +3264,7 @@
+       "integrity": "sha512-LEyamqS7W5HB3ujJyvi0HQK/dtVINZvd5mAAp9eT5S/ujByGjiZLCzPcHVzuXbpJDJF/cxwHlfceVUDZ2lnSTw==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "dependencies": {
+         "@eslint-community/eslint-utils": "^4.8.0",
+         "@eslint-community/regexpp": "^4.12.1",
+@@ -3806,6 +3846,18 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/get-port": {
++      "version": "7.1.0",
++      "resolved": "https://registry.npmjs.org/get-port/-/get-port-7.1.0.tgz",
++      "integrity": "sha512-QB9NKEeDg3xxVwCCwJQ9+xycaz6pBB6iQ76wiWMl1927n0Kir6alPiP+yuiICLLU4jpMe08dXfpebuQppFA2zw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=16"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
+     "node_modules/get-proto": {
+       "version": "1.0.1",
+       "resolved": "https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz",
+@@ -5463,6 +5515,7 @@
+       "integrity": "sha512-5gTmgEY/sqK6gFXLIsQNH19lWb4ebPDLA4SdLP7dsWkIXHWlG66oPuVvXSGFPppYZz8ZDZq0dYYrbHfBCVUb1Q==",
+       "dev": true,
+       "license": "MIT",
++      "peer": true,
+       "engines": {
+         "node": ">=12"
+       },
+@@ -5611,7 +5664,6 @@
+       "dev": true,
+       "license": "MIT",
+       "optional": true,
+-      "peer": true,
+       "dependencies": {
+         "commander": "^9.4.0"
+       },
+@@ -5629,7 +5681,6 @@
+       "dev": true,
+       "license": "MIT",
+       "optional": true,
+-      "peer": true,
+       "engines": {
+         "node": "^12.20.0 || >=14"
+       }
+@@ -5919,7 +5970,6 @@
+       "deprecated": "Rimraf versions prior to v4 are no longer supported",
+       "dev": true,
+       "license": "ISC",
+-      "peer": true,
+       "dependencies": {
+         "glob": "^7.1.3"
+       },
+@@ -6457,7 +6507,6 @@
+       "integrity": "sha512-yYrrsWnrXMcdsnu/7YMYAofM1ktpL5By7vZhf15CrXijWWrEYZks5AXBudalfSWJLlnen/QUJUB5aoB0kqZUGA==",
+       "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "dependencies": {
+         "mkdirp": "^0.5.1",
+         "rimraf": "~2.6.2"
+@@ -6562,7 +6611,6 @@
+       "version": "0.2.5",
+       "resolved": "https://registry.npmjs.org/tmp/-/tmp-0.2.5.tgz",
+       "integrity": "sha512-voyz6MApa1rQGUxT3E+BK7/ROe8itEx7vD8/HEvt4xwXucvQ5G5oeEiHkmHZJuBO21RpOf+YYm9MOivj709jow==",
+-      "dev": true,
+       "license": "MIT",
+       "engines": {
+         "node": ">=14.14"
+diff --git a/package.json b/package.json
+index 34e40b5..5d15873 100644
+--- a/package.json
++++ b/package.json
+@@ -49,13 +49,16 @@
+   },
+   "dependencies": {
+     "@homebridge/dbus-native": "0.7.2",
++    "chrome-remote-interface": "^0.33.3",
+     "electron-log": "^5.4.3",
+     "electron-positioner": "^4.1.0",
+     "electron-store": "8.2.0",
+     "electron-window-state": "5.0.3",
++    "get-port": "^7.1.0",
+     "lodash": "^4.17.23",
+     "mqtt": "^5.14.1",
+     "node-sound": "^0.0.8",
++    "tmp": "^0.2.5",
+     "yargs": "^18.0.0"
+   },
+   "devDependencies": {
+diff --git a/rebase.sh b/rebase.sh
+new file mode 100755
+index 0000000..a77d1b4
+--- /dev/null
++++ b/rebase.sh
+@@ -0,0 +1,2 @@
++#!/usr/bin/env bash
++git rebase upstream/main
+-- 
+2.51.2
+
+
+From ef7c9eb0951324dd08423f74b39b36ebf7b87364 Mon Sep 17 00:00:00 2001
+From: Marco von Raumer <marco.von.raumer@digitecgalaxus.ch>
+Date: Fri, 31 Oct 2025 10:25:25 +0100
+Subject: [PATCH 2/3] Allow more browsers to perform login
+
+---
+ INSTALL.md                 |  6 ++++--
+ app/auth/launchChromium.js | 44 +++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 47 insertions(+), 3 deletions(-)
+
+diff --git a/INSTALL.md b/INSTALL.md
+index ef794b4..ac82e98 100644
+--- a/INSTALL.md
++++ b/INSTALL.md
+@@ -2,8 +2,10 @@
+ 
+ ## Prerequisites
+ 
+-Please make sure you either have chromium in your PATH env or you changed [this line](https://github.com/marcovr/teams-for-linux/blob/main/app/auth/launchChromium.js#L21C23-L21C31)
+-to a chromium based browser that you have.
++You need a **chromium based browser** installed. If you have either `chromium`, `chrome` or `brave` in your PATH, it will work.
++[See here](https://github.com/marcovr/teams-for-linux/blob/main/app/auth/launchChromium.js#L33).
++
++Otherwise, you can set the environment variable `T4L_CHROMIUM_BINARY` to a suitbale binary name / file path.
+ 
+ ## Testing
+ 
+diff --git a/app/auth/launchChromium.js b/app/auth/launchChromium.js
+index 11b04a0..23964fb 100644
+--- a/app/auth/launchChromium.js
++++ b/app/auth/launchChromium.js
+@@ -1,11 +1,15 @@
++const util = require('node:util');
++const exec = util.promisify(require('node:child_process').exec);
+ const { spawn } = require("node:child_process");
+ const getPort = require("get-port").default;
+ const tmp = require("tmp");
++const fs = require('fs');
+ 
+ exports = module.exports = async function launchChromium() {
+   const port = await getPort();
+   const tmpDir = tmp.dirSync({ unsafeCleanup: true }).name;
+ 
++  const binary = await getSuitableBinary();
+   const args = [
+     `--remote-debugging-port=${port}`,
+     `--user-data-dir=${tmpDir}`,
+@@ -18,7 +22,45 @@ exports = module.exports = async function launchChromium() {
+     "https://teams.microsoft.com",
+   ];
+ 
+-  const proc = spawn("chromium", args, { stdio: "ignore", detached: false });
++  const proc = spawn(binary, args, { stdio: "ignore", detached: false });
+ 
+   return { proc, port, userDataDir: tmpDir };
+ }
++
++async function getSuitableBinary() {
++  const envVariableName = "T4L_CHROMIUM_BINARY";
++  const binaryVariable = process.env[envVariableName];
++  const suitableBinaries = ["chromium", "chrome", "brave"];
++
++  if (binaryVariable) {
++    console.log(`Variable '${envVariableName}' set`);
++    if (fs.existsSync(binaryVariable)) {
++      return binaryVariable;
++    }
++    suitableBinaries.unshift(binaryVariable);
++  } else {
++    console.log(`Variable '${envVariableName}' not set`);
++  }
++
++  console.log(`Trying to find one of the following binaries in PATH: ['${suitableBinaries.join("', '")}']`);
++
++  for (const suitableBinary of suitableBinaries) {
++    if (await which(suitableBinary)) {
++      return suitableBinary;
++    }
++  }
++
++  throw new Error("No suitable chromium binary found! Consider setting '${envVariableName}'");
++}
++
++async function which(binaryName) {
++  try {
++    const { stdout } = await exec(`which ${binaryName}`);
++    console.log(`'${binaryName}' found in PATH: ${stdout.trim()}`);
++    return true;
++  }
++  catch {
++    console.log(`'${binaryName}' not found in PATH.`);
++    return false;
++  }
++}
+-- 
+2.51.2
+
+
+From d9120fbb794606a6769c25a553a52c5c90fb730b Mon Sep 17 00:00:00 2001
+From: Oliver Morf <48694510+MacGurk@users.noreply.github.com>
+Date: Tue, 4 Nov 2025 11:20:03 +0100
+Subject: [PATCH 3/3] minor improvements for using the chromium binary
+ environment variable (#1)
+
+* minor improvements for using the chromium binary environment variable
+
+Co-authored-by: Marco von Raumer <marcovr@live.de>
+
+---------
+
+Co-authored-by: MacGurk <oliver.morf@mophnet.ch>
+Co-authored-by: Marco von Raumer <marcovr@live.de>
+---
+ INSTALL.md                 | 10 +++++++++-
+ app/auth/launchChromium.js |  2 +-
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/INSTALL.md b/INSTALL.md
+index ac82e98..3c9eb5a 100644
+--- a/INSTALL.md
++++ b/INSTALL.md
+@@ -2,7 +2,8 @@
+ 
+ ## Prerequisites
+ 
+-You need a **chromium based browser** installed. If you have either `chromium`, `chrome` or `brave` in your PATH, it will work.
++You need a **chromium based browser** installed.
++If you have either `chromium`, `chrome` or `brave` in your PATH, it will work.
+ [See here](https://github.com/marcovr/teams-for-linux/blob/main/app/auth/launchChromium.js#L33).
+ 
+ Otherwise, you can set the environment variable `T4L_CHROMIUM_BINARY` to a suitbale binary name / file path.
+@@ -64,3 +65,10 @@ Terminal=false
+ StartupWMClass=teams-for-linux
+ StartupNotify=true
+ ```
++
++If you need to use the `T4L_CHROMIUM_BINARY` environment variable you can set it directly in the desktop Exec command:
++
++```ini
++Exec=env T4L_CHROMIUM_BINARY=chromium-browser /usr/bin/teams-for-linux
++```
++
+diff --git a/app/auth/launchChromium.js b/app/auth/launchChromium.js
+index 23964fb..5b1df68 100644
+--- a/app/auth/launchChromium.js
++++ b/app/auth/launchChromium.js
+@@ -50,7 +50,7 @@ async function getSuitableBinary() {
+     }
+   }
+ 
+-  throw new Error("No suitable chromium binary found! Consider setting '${envVariableName}'");
++  throw new Error(`No suitable chromium binary found! Consider setting '${envVariableName}'`);
+ }
+ 
+ async function which(binaryName) {
+-- 
+2.51.2
+
