@@ -19,6 +19,7 @@
 const { BrowserWindow, ipcMain, webFrameMain } = require("electron");
 const fido2Backend = require("./fido2Backend");
 const { requestPinPreCollect, requestPinModal } = require("./pinDialog");
+const { showTouchPrompt: showTouchPromptWindow } = require("./touchDialog");
 
 // Defense-in-depth: only allow WebAuthn requests from known Microsoft login origins.
 // The IPC allowlist is the primary control; this is a secondary check.
@@ -65,6 +66,31 @@ async function collectPin(sender) {
 }
 
 /**
+ * Prompt the user to touch his security key by showing a window.
+ *
+ * @param {Promise} closePromise - Promise which resolves when the window should be closed
+ * @param {string} hint - An additional hint to show in the window
+ * @returns {Promise}
+ */
+async function promptForTouch(closePromise, hint) {
+  let win;
+  try {
+    win = showTouchPromptWindow(hint);
+  } catch (errA) {
+    console.warn("[WEBAUTHN:TOUCH] showing touch prompt failed:", errA.message);
+    return;
+  }
+
+  try {
+    await closePromise;
+  } catch {
+    // ignored
+  }
+
+  win.close();
+}
+
+/**
  * Handle a webauthn:create or webauthn:get IPC request.
  * Shared logic for both channels to reduce duplication.
  *
@@ -105,8 +131,8 @@ async function handleWebauthnRequest(operation, event, options) {
     }
 
     const result = operation === "create"
-      ? await fido2Backend.createCredential({ ...options, origin, preCollectedPin })
-      : await fido2Backend.getAssertion({ ...options, origin, preCollectedPin });
+      ? await fido2Backend.createCredential({ ...options, origin, preCollectedPin, touchCallBack: promptForTouch })
+      : await fido2Backend.getAssertion({ ...options, origin, preCollectedPin, touchCallBack: promptForTouch });
     console.info(`[WEBAUTHN] ${operation} succeeded`);
     return { success: true, data: result };
   } catch (err) {

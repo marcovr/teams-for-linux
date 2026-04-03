@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Touch your Security Key</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 16px; background: #f5f5f5; }
+      h3 { margin: 0 0 12px; font-size: 14px; color: #333; }
+      p { font-size: 12px; color: #666; margin: 0 0 12px; }
+    </style>
+  </head>
+  <body>
+    <h3>Touch your Security Key</h3>
+    <p>Touch your FIDO2 security key to continue signing in.</p>
+    <p id="hint"></p>
+    <script>
+      const paramsString = window.location.search;
+      const searchParams = new URLSearchParams(paramsString);
+      const hint = searchParams.get("hint");
+      document.getElementById("hint").innerHTML = hint;
+    </script>
+  </body>
+</html>

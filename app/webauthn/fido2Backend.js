@@ -34,9 +34,10 @@ const execFileAsync = promisify(execFile);
  * @param {string[]} inputLines - Stdin input lines (credential parameters)
  * @param {number} timeoutMs - Process timeout in milliseconds
  * @param {string|null} pin - Pre-collected PIN string, or null if no PIN needed
+ * @param {Function|null} [options.touchCallBack] - Function for prompting to touch the key
  */
-function spawnFido2(cmd, args, inputLines, timeoutMs, pin) {
-  return new Promise((resolve, reject) => {
+function spawnFido2(cmd, args, inputLines, timeoutMs, pin, touchCallBack) {
+  const promise = new Promise((resolve, reject) => {
     // Detach the child process so it has no controlling terminal.
     // fido2-tools use readpassphrase() which tries /dev/tty first for PIN
     // input. With detached: true, open("/dev/tty") fails and the tool
@@ -60,6 +61,12 @@ function spawnFido2(cmd, args, inputLines, timeoutMs, pin) {
       }
     }, timeoutMs);
 
+    const touchTimeout = setTimeout(() => {
+      if (!rejected && touchCallBack) {
+        touchCallBack(promise);
+      }
+    }, 100);
+
     proc.stdout.on("data", (data) => { stdout += data.toString(); });
 
     proc.stderr.on("data", (data) => {
@@ -78,6 +85,7 @@ function spawnFido2(cmd, args, inputLines, timeoutMs, pin) {
 
     proc.on("close", (code) => {
       clearTimeout(timeout);
+      clearTimeout(touchTimeout);
       if (rejected) return;
       if (code === 0) {
         resolve({ stdout });
@@ -88,6 +96,7 @@ function spawnFido2(cmd, args, inputLines, timeoutMs, pin) {
 
     proc.on("error", (err) => {
       clearTimeout(timeout);
+      clearTimeout(touchTimeout);
       if (!rejected) reject(err);
     });
 
@@ -102,6 +111,7 @@ function spawnFido2(cmd, args, inputLines, timeoutMs, pin) {
       proc.stdin.end();
     }
   });
+  return promise;
 }
 
 /**
@@ -244,6 +254,7 @@ function buildCredArgs(authSel) {
  * @param {object} [options.authenticatorSelection] - Authenticator requirements
  * @param {Array} [options.pubKeyCredParams] - Allowed algorithms
  * @param {string|null} [options.preCollectedPin] - Optional PIN string
+ * @param {Function|null} [options.touchCallBack] - Function for prompting to touch the key
  * @returns {Promise<object>} Credential creation result
  */
 async function createCredential(options) {
@@ -269,6 +280,7 @@ async function createCredential(options) {
   const { stdout } = await spawnFido2(
     "fido2-cred", args, inputLines, timeoutMs,
     options.preCollectedPin || null,
+    options.touchCallBack || null,
   );
 
   const lines = stdout.trim().split("\n");
@@ -324,6 +336,7 @@ async function createCredential(options) {
  * @param {string} [options.userVerification] - User verification requirement
  * @param {number} [options.timeout] - Timeout in seconds
  * @param {string|null} [options.preCollectedPin] - Optional PIN string
+ * @param {Function|null} [options.touchCallBack] - Function for prompting to touch the key
  * @returns {Promise<object>} Assertion result
  */
 async function getAssertion(options) {
@@ -362,20 +375,25 @@ async function getAssertion(options) {
   // be the one on the device).
   if (hasAllowCredentials) {
     let lastError;
-    for (const cred of options.allowCredentials) {
+    const credCount = options.allowCredentials.length;
+    for (let index = 0; index < credCount; index++) {
+      const cred = options.allowCredentials[index];
+      const touchHint = credCount > 1 ? `You might have to touch your key up to ${credCount} times.<br>Current attempt: ${index + 1} out of ${credCount}.` : "";
+      const touchCallback = options.touchCallBack ? (closePromise) => options.touchCallBack(closePromise, touchHint) : null;
+
       const credInputLines = [...inputLines, base64urlDecode(cred.id).toString("base64")];
       console.info("[WEBAUTHN] getAssertion: trying credential %d/%d, args: %s",
-        options.allowCredentials.indexOf(cred) + 1, options.allowCredentials.length,
+        index + 1, credCount,
         args.filter(a => !a.startsWith("/dev")).join(" "));
       try {
         const { stdout } = await spawnFido2(
           "fido2-assert", args, credInputLines, timeoutMs,
           options.preCollectedPin || null,
+          touchCallback,
         );
         return parseAssertionOutput(stdout, options, clientDataJSON, cred.id);
       } catch (err) {
-        console.info("[WEBAUTHN] getAssertion: credential %d failed: %s",
-          options.allowCredentials.indexOf(cred) + 1, err.message);
+        console.info("[WEBAUTHN] getAssertion: credential %d failed: %s", index + 1, err.message);
         lastError = err;
         // FIDO_ERR_NO_CREDENTIALS means this credential isn't on the device — try next
         if (!err.message.includes("NO_CREDENTIALS")) {
@@ -392,6 +410,7 @@ async function getAssertion(options) {
   const { stdout } = await spawnFido2(
     "fido2-assert", args, inputLines, timeoutMs,
     options.preCollectedPin || null,
+    options.touchCallBack || null,
   );
   return parseAssertionOutput(stdout, options, clientDataJSON, null);
 }
