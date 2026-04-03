@@ -243,7 +243,7 @@ function buildCredArgs(authSel) {
  * @param {number} [options.timeout] - Timeout in seconds
  * @param {object} [options.authenticatorSelection] - Authenticator requirements
  * @param {Array} [options.pubKeyCredParams] - Allowed algorithms
- * @param {Function|null} [options.pinCallback] - Async function that returns PIN string
+ * @param {string|null} [options.preCollectedPin] - Optional PIN string
  * @returns {Promise<object>} Credential creation result
  */
 async function createCredential(options) {
@@ -323,7 +323,7 @@ async function createCredential(options) {
  * @param {Array} [options.allowCredentials] - Allowed credential descriptors
  * @param {string} [options.userVerification] - User verification requirement
  * @param {number} [options.timeout] - Timeout in seconds
- * @param {Function|null} [options.pinCallback] - Async function that returns PIN string
+ * @param {string|null} [options.preCollectedPin] - Optional PIN string
  * @returns {Promise<object>} Assertion result
  */
 async function getAssertion(options) {
