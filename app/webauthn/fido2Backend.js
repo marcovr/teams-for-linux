@@ -11,7 +11,7 @@
 const { execFile, spawn } = require("node:child_process");
 const { createHash } = require("node:crypto");
 const { promisify } = require("node:util");
-const { encode: cborEncode } = require("cbor-x");
+const { encode: cborEncode, decode: cborDecode } = require("cbor-x");
 const { base64urlEncode, base64urlDecode, generateClientDataJSON, sanitizeForFido2 } = require("./helpers");
 
 const execFileAsync = promisify(execFile);
@@ -412,7 +412,7 @@ function parseAssertionOutput(stdout, options, clientDataJSON) {
     throw new Error(`NotAllowedError: Unexpected fido2-assert output format. Expected at least 2 lines, got ${dataLines.length}.`);
   }
 
-  const authData = Buffer.from(dataLines[0], "base64");
+  const authData = cborDecode(Buffer.from(dataLines[0], "base64"));
   const assertSignature = Buffer.from(dataLines[1], "base64");
   let credentialId;
   if (dataLines.length >= 3) {
