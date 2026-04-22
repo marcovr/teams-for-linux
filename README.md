@@ -32,40 +32,6 @@ with patch to work around the limitations of electron apps related to FIDO authe
 
 ---
 
-### Package Repositories
-
-We have a dedicated deb and rpm repo at https://teamsforlinux.de hosted with :heart: by [Nils Büchner](https://github.com/nbuechner). Please follow the installation instructions below.
-
-**Debian/Ubuntu:**
-```bash
-sudo mkdir -p /etc/apt/keyrings
-sudo wget -qO /etc/apt/keyrings/teams-for-linux.asc https://repo.teamsforlinux.de/teams-for-linux.asc
-sh -c 'echo "Types: deb\nURIs: https://repo.teamsforlinux.de/debian/\nSuites: stable\nComponents: main\nSigned-By: /etc/apt/keyrings/teams-for-linux.asc\nArchitectures: amd64" | sudo tee /etc/apt/sources.list.d/teams-for-linux-packages.sources'
-sudo apt update && sudo apt install teams-for-linux
-```
-
-**RHEL/Fedora:**
-```bash
-curl -1sLf -o /tmp/teams-for-linux.asc https://repo.teamsforlinux.de/teams-for-linux.asc; sudo rpm --import /tmp/teams-for-linux.asc
-sudo curl -1sLf -o /etc/yum.repos.d/teams-for-linux.repo https://repo.teamsforlinux.de/rpm/teams-for-linux.repo
-sudo dnf -y install teams-for-linux
-```
-
-### Distribution Packages
-
-[![AUR: teams-for-linux](https://img.shields.io/badge/AUR-teams--for--linux-blue.svg)](https://aur.archlinux.org/packages/teams-for-linux)
-[![Pacstall: teams-for-linux-deb](https://img.shields.io/badge/Pacstall-teams--for--linux--deb-00958C)](https://github.com/pacstall/pacstall-programs/tree/master/packages/teams-for-linux-deb)
-[![Vylen Linux: teams-for-linux](https://img.shields.io/badge/Vylen_Linux-teams--for--linux-green)](https://vylen.gitlab.io/packages/#teams-for-linux)  
-[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/teams-for-linux)
-<a href='https://flathub.org/apps/details/com.github.IsmaelMartinez.teams_for_linux'><img width='170' alt='Download on Flathub' src='https://flathub.org/assets/badges/flathub-badge-en.png'/></a>
-
-### Manual Download
-
-Download from [GitHub Releases](https://github.com/IsmaelMartinez/teams-for-linux/releases) — available as AppImage, deb, rpm, snap, tar.gz (plus Windows/macOS builds).
-
-> [!TIP]
-> For AppImage files, use [`AppImageLauncher`](https://github.com/TheAssassin/AppImageLauncher) for better desktop integration.
-
 ## Quick Start
 
 1. **Install** using your preferred method above
