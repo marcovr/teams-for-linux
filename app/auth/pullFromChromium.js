@@ -2,6 +2,8 @@ const CDP = require("chrome-remote-interface");
 
 const COOKIE_DOMAINS = [
   "teams.microsoft.com",
+  "teams.cloud.microsoft",
+  ".cloud.microsoft",
   "login.microsoftonline.com",
   ".login.microsoftonline.com",
   ".msauth.net",

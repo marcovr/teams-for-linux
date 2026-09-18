@@ -1608,7 +1608,7 @@ async function handleReauth() {
 
   currentlyReauthing = true;
   try {
-    await authenticateWithChromium(config.partition);
+    await authenticateWithChromium(config.partition, config.url);
   } finally {
     setTimeout(() => {
       currentlyReauthing = false;
@@ -1616,7 +1616,7 @@ async function handleReauth() {
   }
 
   console.log("Reloading teams - hopefully everything works now");
-  window.loadURL("https://teams.microsoft.com");
+  window.loadURL(config.url, { userAgent: config.chromeUserAgent });
 }
 
 function isFidoUrl(url) {
