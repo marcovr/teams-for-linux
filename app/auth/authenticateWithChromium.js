@@ -2,9 +2,9 @@ const launchChromium = require("./launchChromium");
 const fetchCookies = require("./pullFromChromium");
 const importCookiesIntoElectron = require("./importIntoElectron");
 
-exports = module.exports = async function doIt(partition) {
+exports = module.exports = async function doIt(partition, teamsUrl) {
   console.log(`Launching Chromium for login flow`);
-  const chrome = await launchChromium();
+  const chrome = await launchChromium(teamsUrl);
   const cookies = await waitForCookies(chrome);
   chrome.proc.kill("SIGTERM");
 
