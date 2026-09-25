@@ -5,7 +5,7 @@ const getPort = require("get-port").default;
 const tmp = require("tmp");
 const fs = require('fs');
 
-exports = module.exports = async function launchChromium() {
+exports = module.exports = async function launchChromium(teamsUrl) {
   const port = await getPort();
   const tmpDir = tmp.dirSync({ unsafeCleanup: true }).name;
 
@@ -19,7 +19,7 @@ exports = module.exports = async function launchChromium() {
     "--disable-features=NetworkServiceInProcess", // stability
     "--enable-features=NetworkService,TrustTokens,StorageAccessAPI",
     "--incognito=false",
-    "https://teams.microsoft.com",
+    teamsUrl,
   ];
 
   const proc = spawn(binary, args, { stdio: "ignore", detached: false });

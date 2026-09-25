@@ -1465,7 +1465,7 @@ async function handleReauth() {
 
   currentlyReauthing = true;
   try {
-    await authenticateWithChromium(config.partition);
+    await authenticateWithChromium(config.partition, config.url);
   } finally {
     setTimeout(() => {
       currentlyReauthing = false;
@@ -1473,10 +1473,15 @@ async function handleReauth() {
   }
 
   console.log("Reloading teams - hopefully everything works now");
-  window.loadURL("https://teams.microsoft.com");
+  window.loadURL(config.url, { userAgent: config.chromeUserAgent });
 }
 
+// Matches both the legacy /<tenant>/fido/ page and the current /<tenant>/bridge/fido one.
 function isFidoUrl(url) {
-  return url.startsWith("https://login.microsoft.com/35aa8c5b-ac0a-4b15-9788-ff6dfa22901f/fido/")
-    || url.startsWith("https://login.microsoft.com/common/fido/");
+  try {
+    const { hostname, pathname } = new URL(url);
+    return hostname === "login.microsoft.com" && /\/fido(\/|$)/.test(pathname);
+  } catch {
+    return false;
+  }
 }
